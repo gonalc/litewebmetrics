@@ -1,0 +1,69 @@
+# Source files (types are generated)
+src/
+
+# Tests
+tests/
+*.test.ts
+*.spec.ts
+__tests__/
+coverage/
+.nyc_output/
+
+# Build scripts and tools
+scripts/
+tsconfig.json
+.eslintrc*
+.prettierrc*
+.editorconfig
+
+# Development files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+Jenkinsfile
+
+# Documentation (keep README)
+docs/
+*.md
+!README.md
+
+# Examples
+examples/
+
+# Environment
+.env
+.env.*
+*.local
+
+# Lock files (use package.json)
+bun.lockb
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.cache/
+
+# Source maps (optional - can include if needed for debugging)
+# *.map

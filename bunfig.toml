@@ -1,0 +1,15 @@
+[build]
+# Target older browsers for compatibility
+target = "browser"
+
+# Minification settings for production builds
+minify = false
+
+[build.define]
+# Can be used for compile-time constants
+"process.env.NODE_ENV" = "'production'"
+
+[test]
+# Test configuration
+coverage = false
+preload = ["./tests/setup.ts"]
