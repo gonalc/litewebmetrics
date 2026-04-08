@@ -1,0 +1,7 @@
+{
+  "name": "litewebmetrics",
+  "compatibility_date": "2020-01-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}

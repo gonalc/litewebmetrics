@@ -8,6 +8,8 @@
  */
 
 import * as esbuild from 'esbuild';
+import { copyFileSync, mkdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 const endpoint = process.env.ANALYTICS_ENDPOINT;
 if (!endpoint) {
@@ -91,5 +93,22 @@ for (const result of results) {
 }
 
 if (failed) process.exit(1);
+
+// Copy bundles into versioned subfolder for immutable CDN caching
+const { version } = JSON.parse(readFileSync('package.json', 'utf-8'));
+const bundles = [
+  'analytics.full.min.js',
+  'analytics.min.js',
+  'analytics.esm.js',
+  'analytics.js',
+];
+const versionedDir = join('dist', `v${version}`);
+mkdirSync(versionedDir, { recursive: true });
+for (const file of bundles) {
+  copyFileSync(join('dist', file), join(versionedDir, file));
+}
+
+// Copy _headers so Cloudflare applies cache rules
+copyFileSync(join('public', '_headers'), join('dist', '_headers'));
 
 console.log('  Bundles built successfully.');
