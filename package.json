@@ -75,7 +75,7 @@
   "bugs": {
     "url": "https://github.com/gonalc/litewebmetrics/issues"
   },
-  "homepage": "https://github.com/gonalc/litewebmetrics#readme",
+  "homepage": "https://litewebmetrics.com/",
   "engines": {
     "node": ">=16.0.0"
   }

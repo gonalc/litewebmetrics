@@ -17,9 +17,8 @@ Lightweight analytics tracker for web applications. Under 3KB gzipped with suppo
 
 ```html
 <script
-  src="/analytics.min.js"
+  src="https://sdk.litewebmetrics.com/v0.0.1/analytics.min.js"
   data-api-key="your_api_key"
-  data-endpoint="https://your-analytics-server.example.com"
 ></script>
 ```
 
