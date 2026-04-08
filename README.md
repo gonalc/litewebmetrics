@@ -91,7 +91,7 @@ analytics.instance.getSessionId();
 
 ## Documentation
 
-See the complete **[SDK Usage Guide](../../docs/SDK_USAGE.md)** for:
+See the complete **[SDK Usage Guide](https://litewebmetrics.com/docs/)** for:
 - Framework integration (Astro, React, Vue, Next.js)
 - SPA route tracking
 - Event tracking examples

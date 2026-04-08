@@ -1,6 +1,6 @@
 {
   "name": "litewebmetrics",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Lightweight analytics tracker for web applications (<3KB gzipped)",
   "type": "module",
   "main": "dist/analytics.js",
