@@ -180,6 +180,22 @@ describe('isValidConfig', () => {
     expect(isValidConfig({ apiKey: 'pk_test', debug: 'true' })).toBe(false);
   });
 
+  test('accepts function sanitizeUrl and string visitorId', () => {
+    expect(
+      isValidConfig({ apiKey: 'pk_test', sanitizeUrl: (u: string) => u, visitorId: 'v_1' })
+    ).toBe(true);
+  });
+
+  test('rejects config with invalid sanitizeUrl', () => {
+    expect(isValidConfig({ apiKey: 'pk_test', sanitizeUrl: 'x' })).toBe(false);
+    expect(isValidConfig({ apiKey: 'pk_test', sanitizeUrl: null })).toBe(false);
+  });
+
+  test('rejects config with invalid visitorId', () => {
+    expect(isValidConfig({ apiKey: 'pk_test', visitorId: 123 })).toBe(false);
+    expect(isValidConfig({ apiKey: 'pk_test', visitorId: null })).toBe(false);
+  });
+
   test('rejects config with invalid maxQueueSize', () => {
     expect(isValidConfig({ apiKey: 'pk_test', maxQueueSize: 0 })).toBe(false);
     expect(isValidConfig({ apiKey: 'pk_test', maxQueueSize: -1 })).toBe(false);

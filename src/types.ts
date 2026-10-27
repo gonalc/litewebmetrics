@@ -48,6 +48,12 @@ export type AnalyticsConfig = {
 
   /** Enable adaptive network behavior (adjusts batching based on connection quality) */
   readonly adaptiveNetwork?: boolean; // default: true
+
+  /** Rewrite the page URL before it is stored on an event (e.g. strip ids, tokens, query) */
+  readonly sanitizeUrl?: (url: string) => string;
+
+  /** Use this visitor ID instead of the generated one (not written to storage) */
+  readonly visitorId?: string;
 };
 
 /**
@@ -62,6 +68,7 @@ export type ResolvedConfig = {
   readonly flushInterval: number;
   readonly autoTrack: boolean;
   readonly adaptiveNetwork: boolean;
+  readonly sanitizeUrl?: (url: string) => string;
 };
 
 // =============================================================================
@@ -137,7 +144,7 @@ export type RawEvent = {
 
 /**
  * Queued event waiting to be flushed.
- * Contains only user-provided data; context is added at flush time.
+ * Page URL and title are captured at track time; other context is added at flush time.
  */
 export type QueuedEvent = {
   /** Event name */
@@ -148,6 +155,12 @@ export type QueuedEvent = {
 
   /** Timestamp when event was queued */
   readonly timestamp: number;
+
+  /** Page URL when the event was tracked (already sanitized) */
+  readonly page_url?: string;
+
+  /** Page title when the event was tracked */
+  readonly page_title?: string;
 };
 
 // =============================================================================
@@ -337,6 +350,10 @@ export function isValidConfig(value: unknown): value is AnalyticsConfig {
       return false;
   }
   if (config.autoTrack !== undefined && typeof config.autoTrack !== 'boolean')
+    return false;
+  if (config.sanitizeUrl !== undefined && typeof config.sanitizeUrl !== 'function')
+    return false;
+  if (config.visitorId !== undefined && typeof config.visitorId !== 'string')
     return false;
 
   return true;

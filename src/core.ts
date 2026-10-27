@@ -18,7 +18,11 @@ interface Config {
   autoTrack: boolean;
   maxQueueSize: number;
   flushInterval: number;
+  sanitizeUrl?: (url: string) => string;
 }
+
+type Opts = Partial<Config> & { visitorId?: string };
+type QE = { e: string; p: Record<string, unknown>; t: number; u: string; ti: string };
 
 interface Event {
   event: string;
@@ -92,13 +96,15 @@ function sanitize(s: string): string {
 
 class Core {
   private cfg: Config;
-  private q: Array<{ e: string; p: Record<string, unknown>; t: number }> = [];
+  private q: QE[] = [];
   private vid: string;
   private sid: string;
   private timer: ReturnType<typeof setInterval> | null = null;
   private ok = false;
+  private lu: string | null = null; // last raw URL seen by sanitizeUrl
+  private ls = ''; // its sanitized result
 
-  constructor(config: Partial<Config> & { apiKey: string }) {
+  constructor(config: Opts & { apiKey: string }) {
     if (!config.apiKey) throw new Error('API key required');
 
     this.cfg = {
@@ -108,9 +114,12 @@ class Core {
       autoTrack: config.autoTrack !== false,
       maxQueueSize: config.maxQueueSize || 10,
       flushInterval: config.flushInterval || 5000,
+      sanitizeUrl: config.sanitizeUrl,
     };
 
-    this.vid = getVisitorId();
+    // Explicit visitorId wins and is not written to storage
+    const v = config.visitorId;
+    this.vid = typeof v == 'string' && v ? v : getVisitorId();
     this.sid = getSessionId();
 
     if (isBot()) return;
@@ -120,13 +129,14 @@ class Core {
     this.startTimer();
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', () => this.send());
+      window.addEventListener('beforeunload', () => this.flush());
     }
   }
 
   track(event: string, props: Record<string, unknown> = {}): void {
     if (!this.ok) return;
-    this.q.push({ e: sanitize(event), p: props, t: Date.now() });
+    // Capture page context now, not at flush time
+    this.q.push({ e: sanitize(event), p: props, t: Date.now(), u: this.url(), ti: document.title });
     if (this.q.length >= this.cfg.maxQueueSize) this.flush();
   }
 
@@ -141,7 +151,20 @@ class Core {
     await this.send(events);
   }
 
-  private async send(events = this.q): Promise<void> {
+  // Current URL through sanitizeUrl, cached per raw URL; raw URL if it throws/returns non-string
+  private url(): string {
+    const u = location.href, f = this.cfg.sanitizeUrl;
+    if (!f) return u;
+    if (u !== this.lu) {
+      let s: unknown = u;
+      try { s = f(u); } catch { /* use raw */ }
+      this.lu = u;
+      this.ls = typeof s == 'string' ? s : u;
+    }
+    return this.ls;
+  }
+
+  private async send(events: QE[]): Promise<void> {
     if (!events.length) return;
 
     const batch = {
@@ -170,15 +193,15 @@ class Core {
     }
   }
 
-  private build(e: { e: string; p: Record<string, unknown>; t: number }): Event {
+  private build(e: QE): Event {
     return {
       event: e.e,
       properties: e.p,
       timestamp: e.t,
       visitor_id: this.vid,
       session_id: this.sid,
-      page_url: location.href,
-      page_title: document.title,
+      page_url: e.u,
+      page_title: e.ti,
       referrer: document.referrer,
       user_agent: navigator.userAgent,
       screen_width: screen.width,
@@ -194,7 +217,7 @@ class Core {
 
   destroy(): void {
     if (this.timer) clearInterval(this.timer);
-    this.send();
+    this.flush();
     this.ok = false;
   }
 
@@ -211,7 +234,7 @@ import { VERSION } from './version';
 interface GA {
   version: string;
   instance: Core | null;
-  init(apiKey: string, cfg?: Partial<Omit<Config, 'apiKey'>>): Core;
+  init(apiKey: string, cfg?: Omit<Opts, 'apiKey'>): Core;
   track(e: string, p?: Record<string, unknown>): void;
   flush(): Promise<void>;
 }

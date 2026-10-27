@@ -10,6 +10,7 @@ import { resetStorageCache, clearVisitorId, clearSessionId } from '../src/storag
 import { resetCapabilityCache } from '../src/utils';
 import { clearOfflineEvents, clearSentRequests } from '../src/network';
 import { resetNetworkAdapter } from '../src/network-adapter';
+import globalAnalytics from '../src/index';
 
 // =============================================================================
 // Mock Setup
@@ -1038,6 +1039,204 @@ describe('Analytics', () => {
       }
 
       analytics.destroy();
+    });
+  });
+
+  // ===========================================================================
+  // Page Context Capture Tests
+  // ===========================================================================
+
+  describe('page context capture', () => {
+    function setUrl(href: string): void {
+      (window.location as unknown as Record<string, unknown>).href = href;
+    }
+
+    function sentEvents(call = 0): Array<Record<string, unknown>> {
+      const blob = sendBeaconCalls[call].data as { content: string[] };
+      return JSON.parse(blob.content[0]).events;
+    }
+
+    test('uses the URL at track time, not at flush time', async () => {
+      const analytics = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false });
+
+      analytics.track('event1');
+      setUrl('https://example.com/other');
+      await analytics.flush();
+
+      expect(sentEvents()[0].page_url).toBe('https://example.com/page');
+
+      analytics.destroy();
+    });
+
+    test('events in one batch keep their own URL and title', async () => {
+      const analytics = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false });
+
+      analytics.track('event1');
+      setUrl('https://example.com/second');
+      document.title = 'Second Page';
+      analytics.track('event2');
+      await analytics.flush();
+
+      const events = sentEvents();
+      expect(events[0].page_url).toBe('https://example.com/page');
+      expect(events[0].page_title).toBe('Test Page');
+      expect(events[1].page_url).toBe('https://example.com/second');
+      expect(events[1].page_title).toBe('Second Page');
+
+      analytics.destroy();
+    });
+
+    test('applies sanitizeUrl to the captured URL', async () => {
+      const analytics = new Analytics({
+        apiKey: 'test_key',
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        sanitizeUrl: (u) => new URL(u).pathname,
+      });
+
+      analytics.track('event1');
+      await analytics.flush();
+
+      expect(sentEvents()[0].page_url).toBe('/page');
+
+      analytics.destroy();
+    });
+
+    test('falls back to the raw URL if sanitizeUrl throws', async () => {
+      const analytics = new Analytics({
+        apiKey: 'test_key',
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        sanitizeUrl: () => {
+          throw new Error('boom');
+        },
+      });
+
+      analytics.track('event1');
+      await analytics.flush();
+
+      expect(sentEvents()[0].page_url).toBe('https://example.com/page');
+
+      analytics.destroy();
+    });
+
+    test('falls back to the raw URL if sanitizeUrl returns a non-string', async () => {
+      const analytics = new Analytics({
+        apiKey: 'test_key',
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        sanitizeUrl: (() => 42) as unknown as (url: string) => string,
+      });
+
+      analytics.track('event1');
+      await analytics.flush();
+
+      expect(sentEvents()[0].page_url).toBe('https://example.com/page');
+
+      analytics.destroy();
+    });
+
+    test('runs sanitizeUrl once per distinct URL', () => {
+      const sanitizeUrl = mock((u: string) => u.toUpperCase());
+      const analytics = new Analytics({
+        apiKey: 'test_key',
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        maxQueueSize: 100,
+        sanitizeUrl,
+      });
+
+      analytics.track('event1');
+      analytics.track('event2');
+      analytics.track('event3');
+      expect(sanitizeUrl).toHaveBeenCalledTimes(1);
+
+      setUrl('https://example.com/other');
+      analytics.track('event4');
+      expect(sanitizeUrl).toHaveBeenCalledTimes(2);
+
+      analytics.destroy();
+    });
+
+    test('setConfig sanitizeUrl applies to later events', async () => {
+      const analytics = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false });
+
+      analytics.track('event1');
+      analytics.setConfig({ sanitizeUrl: () => '/redacted' });
+      analytics.track('event2');
+      await analytics.flush();
+
+      const events = sentEvents();
+      expect(events[0].page_url).toBe('https://example.com/page');
+      expect(events[1].page_url).toBe('/redacted');
+
+      analytics.destroy();
+    });
+
+    test('events queued offline keep their captured URL', async () => {
+      const analytics = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false });
+
+      analytics.track('event1');
+      setUrl('https://example.com/other');
+      (navigator as unknown as Record<string, unknown>).onLine = false;
+      await analytics.flush();
+      expect(sendBeaconCalls.length).toBe(0);
+
+      (navigator as unknown as Record<string, unknown>).onLine = true;
+      triggerWindowEvent('online');
+
+      expect(sendBeaconCalls.length).toBe(1);
+      expect(sentEvents()[0].page_url).toBe('https://example.com/page');
+
+      analytics.destroy();
+    });
+
+    test('visitorId option overrides the generated ID without storing it', async () => {
+      const analytics = new Analytics({
+        apiKey: 'test_key',
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        visitorId: 'native_123',
+      });
+
+      expect(analytics.getVisitorId()).toBe('native_123');
+      expect(localStorage.getItem('_analytics_vid')).toBeNull();
+
+      analytics.track('event1');
+      await analytics.flush();
+      expect(sentEvents()[0].visitor_id).toBe('native_123');
+
+      analytics.destroy();
+    });
+
+    test('generates a visitor ID when visitorId is absent or empty', () => {
+      const a = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false });
+      const stored = localStorage.getItem('_analytics_vid');
+      expect(stored).toBeTruthy();
+      expect(a.getVisitorId()).toBe(stored as string);
+      a.destroy();
+
+      const b = new Analytics({ apiKey: 'test_key', endpoint: SERVER_URL, autoTrack: false, visitorId: '' });
+      expect(b.getVisitorId()).toBe(stored as string);
+      b.destroy();
+    });
+
+    test('global init passes sanitizeUrl and visitorId through', async () => {
+      const instance = globalAnalytics.init('test_key', {
+        endpoint: SERVER_URL,
+        autoTrack: false,
+        visitorId: 'native_456',
+        sanitizeUrl: () => '/clean',
+      });
+
+      globalAnalytics.track('event1');
+      await globalAnalytics.flush();
+
+      expect(instance.getVisitorId()).toBe('native_456');
+      expect(sentEvents()[0].page_url).toBe('/clean');
+      expect(sentEvents()[0].visitor_id).toBe('native_456');
+
+      globalAnalytics.destroy();
     });
   });
 });
