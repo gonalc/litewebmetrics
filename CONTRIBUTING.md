@@ -35,6 +35,8 @@ The core build (`analytics.min.js`) must stay under **3KB gzipped**. Run `bun ru
 3. Ensure `bun run build` and `bun test` pass
 4. Open a pull request with a clear description of the change
 
+CI runs typecheck, tests, the build and the bundle size check on every pull request; all must pass before merging.
+
 ## Architecture
 
 - `src/core.ts` — Self-contained minimal build (IIFE, <3KB)
