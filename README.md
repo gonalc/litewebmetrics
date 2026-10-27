@@ -72,11 +72,31 @@ analytics.init('pk_test_abc123', {
 | `data-debug` | `false` | Enable console logging |
 | `data-auto-track` | `true` | Auto-track pageviews |
 
+### JavaScript options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `endpoint` | hosted service | Your analytics server URL |
+| `debug` | `false` | Enable console logging |
+| `autoTrack` | `true` | Auto-track pageviews (initial + SPA navigation) |
+| `maxQueueSize` | `10` | Events queued before an automatic flush |
+| `flushInterval` | `5000` | Flush interval in ms |
+| `sanitizeUrl` | - | `(url) => string`, rewrites the page URL before it is stored on an event (e.g. replace ids/tokens with route patterns, drop query/hash). Falls back to the raw URL if it throws or returns a non-string |
+| `visitorId` | generated | Use your own persisted visitor ID instead of the generated one. Not written to storage |
+
+```javascript
+analytics.init(key, { autoTrack: false, sanitizeUrl: (u) => new URL(u).pathname });
+```
+
+`sanitizeUrl` must be pure and synchronous: its result is cached per URL, so it runs once for each distinct URL. It only rewrites `page_url`; `referrer` and UTM parameters are not changed.
+
+`page_url` and `page_title` are captured when `track()` is called, so events keep the page they were tracked on even if they are flushed later.
+
 ## API
 
 ```javascript
 // Initialize
-analytics.init(apiKey, { endpoint, debug, autoTrack });
+analytics.init(apiKey, { endpoint, debug, autoTrack, sanitizeUrl, visitorId });
 
 // Track event
 analytics.track('event_name', { key: 'value' });

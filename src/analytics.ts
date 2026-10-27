@@ -16,7 +16,7 @@ import type {
   QueuedEvent,
   EventBatch,
 } from './types';
-import { DEFAULT_CONFIG } from './types';
+import { DEFAULT_CONFIG, createVisitorId } from './types';
 import { getVisitorId, getSessionId } from './storage';
 import {
   isBot,
@@ -83,6 +83,10 @@ export class Analytics {
   private isInitialized = false;
   private lastPageUrl = '';
 
+  // Single-entry cache for sanitizeUrl (raw URL -> sanitized URL)
+  private lastRawUrl: string | null = null;
+  private lastSanitizedUrl = '';
+
   // Bound event handlers (for cleanup)
   private boundHandlePageUnload: () => void;
   private boundHandleOnline: () => void;
@@ -122,13 +126,17 @@ export class Analytics {
       flushInterval: config.flushInterval ?? DEFAULT_CONFIG.flushInterval,
       autoTrack: config.autoTrack ?? DEFAULT_CONFIG.autoTrack,
       adaptiveNetwork: config.adaptiveNetwork ?? DEFAULT_CONFIG.adaptiveNetwork,
+      sanitizeUrl: config.sanitizeUrl,
     };
 
     // Set debug mode for network module
     setDebugMode(this.config.debug);
 
-    // 3. Get/create visitor and session IDs
-    this.visitorId = getVisitorId();
+    // 3. Get/create visitor and session IDs (an explicit visitorId wins and is not stored)
+    this.visitorId =
+      typeof config.visitorId === 'string' && config.visitorId
+        ? createVisitorId(config.visitorId)
+        : getVisitorId();
     this.sessionId = getSessionId();
 
     // 4. Initialize bound handlers
@@ -279,11 +287,13 @@ export class Analytics {
       // 2. Sanitize properties
       const sanitizedProps = sanitizeProperties(properties);
 
-      // 3. Create QueuedEvent
+      // 3. Create QueuedEvent (page context captured now, not at flush)
       const queuedEvent: QueuedEvent = {
         event: sanitizedName,
         properties: sanitizedProps,
         timestamp: Date.now(),
+        page_url: this.capturePageUrl(),
+        page_title: getPageTitle(),
       };
 
       // 4. Add to queue
@@ -298,6 +308,39 @@ export class Analytics {
     } catch (error) {
       this.error('Failed to track event', error);
     }
+  }
+
+  /**
+   * Read the current page URL and apply sanitizeUrl.
+   * Caches the last result so sanitizeUrl runs once per distinct URL.
+   * Falls back to the raw URL if sanitizeUrl throws or returns a non-string.
+   */
+  private capturePageUrl(): string {
+    const rawUrl = getPageUrl();
+    const sanitizeUrl = this.config.sanitizeUrl;
+    if (!sanitizeUrl) {
+      return rawUrl;
+    }
+
+    if (rawUrl === this.lastRawUrl) {
+      return this.lastSanitizedUrl;
+    }
+
+    let url = rawUrl;
+    try {
+      const result = sanitizeUrl(rawUrl);
+      if (typeof result === 'string') {
+        url = result;
+      } else {
+        this.warn('sanitizeUrl returned a non-string, using raw URL');
+      }
+    } catch (error) {
+      this.warn('sanitizeUrl threw, using raw URL', error);
+    }
+
+    this.lastRawUrl = rawUrl;
+    this.lastSanitizedUrl = url;
+    return url;
   }
 
   /**
@@ -392,8 +435,6 @@ export class Analytics {
    * Build RawEvents from QueuedEvents by adding context metadata.
    */
   private buildRawEvents(queuedEvents: QueuedEvent[]): RawEvent[] {
-    const pageUrl = getPageUrl();
-    const pageTitle = getPageTitle();
     const referrer = getReferrer();
     const userAgent = getUserAgent();
     const screen = getScreenDimensions();
@@ -405,8 +446,8 @@ export class Analytics {
       timestamp: queued.timestamp,
       visitor_id: this.visitorId,
       session_id: this.sessionId,
-      page_url: pageUrl,
-      page_title: pageTitle,
+      page_url: queued.page_url ?? this.capturePageUrl(),
+      page_title: queued.page_title ?? getPageTitle(),
       referrer: referrer,
       user_agent: userAgent,
       screen_width: screen.width,
@@ -646,7 +687,15 @@ export class Analytics {
         flushInterval: updates.flushInterval,
       }),
       ...(updates.autoTrack !== undefined && { autoTrack: updates.autoTrack }),
+      ...(updates.sanitizeUrl !== undefined && {
+        sanitizeUrl: updates.sanitizeUrl,
+      }),
     };
+
+    // Drop cached sanitized URL if the sanitizer changed
+    if (updates.sanitizeUrl !== undefined) {
+      this.lastRawUrl = null;
+    }
 
     // Update debug mode
     if (updates.debug !== undefined) {
